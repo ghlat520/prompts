@@ -1,0 +1,142 @@
+# LLM 三梯度路由配置
+# 路由规则：min(维度推荐梯度, 用户最高梯度) → 选择模型
+
+# ============================================================
+# 梯度定义
+# ============================================================
+tiers:
+  T1:
+    name: "白嫖层"
+    description: "免费模型，适合日常资讯摘要、公告解读、简单筛选"
+    models:
+      - id: "ernie-speed-8k"
+        provider: "baidu"
+        name: "ERNIE-Speed-8K"
+        price: "免费"
+        rpm: 300
+        context_window: 8192
+        strengths: "中文优化、长期免费"
+        priority: 1  # 优先使用
+      - id: "glm-4-flash"
+        provider: "zhipu"
+        name: "GLM-4-Flash"
+        price: "免费"
+        rpm: 100
+        context_window: 128000
+        strengths: "长上下文免费、备用通道"
+        priority: 2
+      - id: "gemini-2.0-flash"
+        provider: "google"
+        name: "Gemini 2.0 Flash"
+        price: "免费层"
+        rpm: 15
+        context_window: 1048576
+        strengths: "英文财报/美股分析最佳"
+        priority: 3  # 美股分析优先
+
+  T2:
+    name: "性价比层"
+    description: "付费但便宜，适合深度分析、估值计算、产业链梳理"
+    models:
+      - id: "deepseek-v3"
+        provider: "deepseek"
+        name: "DeepSeek-V3"
+        price_input: 0.5    # 元/百万token (缓存命中)
+        price_input_miss: 2  # 元/百万token (缓存未命中)
+        price_output: 8      # 元/百万token
+        context_window: 131072
+        strengths: "推理强、性价比高、128K上下文"
+        priority: 1
+      - id: "doubao-lite-128k"
+        provider: "bytedance"
+        name: "Doubao-lite-128k"
+        price_input: 0.8   # 元/百万token
+        price_output: 0.8
+        context_window: 131072
+        strengths: "128K上下文最便宜，适合长报告"
+        priority: 2
+
+  T3:
+    name: "质量层"
+    description: "最强模型，适合关键决策、复杂估值、投资建议综合"
+    models:
+      - id: "deepseek-r1"
+        provider: "deepseek"
+        name: "DeepSeek-R1"
+        price_input: 4     # 元/百万token (缓存未命中)
+        price_input_hit: 1  # 元/百万token (缓存命中)
+        price_output: 16    # 元/百万token
+        context_window: 131072
+        strengths: "推理能力最强，复杂估值首选"
+        priority: 1
+      - id: "qwen-max"
+        provider: "alibaba"
+        name: "Qwen-Max"
+        price_input: 2.4   # 元/百万token
+        price_output: 9.6
+        context_window: 32768
+        strengths: "中文理解强，综合能力均衡"
+        priority: 2
+
+# ============================================================
+# 维度 → 推荐梯度映射
+# ============================================================
+dimension_tier_mapping:
+  COMPANY_BASICS: T1
+  INDUSTRY: T2
+  BUSINESS_MODEL: T2
+  FINANCIAL_QUALITY: T2
+  VALUATION: T3
+  MOAT: T2
+  SUPPLY_CHAIN: T2
+  TECHNICAL: T1
+  DECISION: T3
+
+# ============================================================
+# 路由规则
+# ============================================================
+routing:
+  # 用户配置的最高允许梯度（运行时覆盖）
+  max_tier: T3
+
+  # 降级策略：当推荐梯度 > 用户最高梯度时
+  fallback_strategy: "downgrade"  # downgrade | skip | warn
+
+  # 美股特殊路由：T1层优先使用Gemini（英文能力强）
+  market_overrides:
+    US:
+      T1_preferred: "gemini-2.0-flash"
+
+  # 并行调用策略
+  parallel:
+    enabled: true
+    max_concurrent: 4  # 最多同时调用4个维度
+
+  # Token预算（单只股票）— 基于300054实测校准(2026-02-11)
+  token_budget:
+    COMPANY_BASICS: { input: 1000, output: 2500 }
+    INDUSTRY: { input: 1000, output: 3000 }
+    BUSINESS_MODEL: { input: 1000, output: 3000 }
+    FINANCIAL_QUALITY: { input: 1200, output: 3500 }
+    VALUATION: { input: 1500, output: 5000 }
+    MOAT: { input: 1000, output: 2200 }
+    SUPPLY_CHAIN: { input: 1000, output: 5000 }
+    TECHNICAL: { input: 2000, output: 2000 }
+    DECISION: { input: 4000, output: 5000 }
+
+# ============================================================
+# 成本估算
+# ============================================================
+cost_estimation:
+  # 9维度完整分析，单只股票 — 基于300054实测校准(2026-02-11)
+  full_analysis_per_stock:
+    total_input_tokens: 13700
+    total_output_tokens: 31200
+    T1_cost: "免费"
+    T2_cost: "~¥0.28"  # 实测约为原估2倍
+    T3_cost: "~¥0.80"
+  # 日常使用（20只/天）
+  daily_20_stocks:
+    T1_cost: "免费"
+    T2_cost: "~¥5.6/天 ≈ ¥168/月"
+    T3_cost: "~¥16/天 ≈ ¥480/月"

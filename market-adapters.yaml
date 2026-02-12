@@ -1,0 +1,60 @@
+# 市场适配层配置
+# 根据市场(A/H/US)动态注入提示词变量
+
+markets:
+  A:
+    market: "A股"
+    market_specific_factors: |
+      注册制改革影响、北向资金流向（沪深港通）、涨跌停板制度（主板10%/创业板科创板20%）、
+      ST/*ST风险标识、融资融券余额变化、大小非解禁压力、
+      国家队/社保基金持仓变化、政策导向（国九条/新质生产力等）
+    data_source: "akshare/tushare"
+    language: "中文"
+    trading_rules: |
+      - T+1交易制度（当日买入次日方可卖出）
+      - 涨跌停限制：主板±10%，创业板/科创板±20%，ST股±5%
+      - 集合竞价：9:15-9:25（9:20后不可撤单）、14:57-15:00
+      - 融资融券：需50万+6个月门槛
+    currency: "CNY"
+    currency_symbol: "元"
+
+  H:
+    market: "港股"
+    market_specific_factors: |
+      港股通南向资金流向、做空机制（可融券卖空）、仙股风险（股价<1港元）、
+      老千股风险（频繁合股/供股）、AH溢价指数参考、
+      联系汇率制度（港币锚定美元）、恒指成分股调整
+    data_source: "akshare/yfinance"
+    language: "中文"
+    trading_rules: |
+      - T+0交易制度（当日买卖无限制）
+      - 无涨跌停限制（理论上可跌至0）
+      - 交易时段：9:30-12:00 / 13:00-16:00
+      - 最小交易单位：1手（股数因股而异，非统一100股）
+      - 结算制度：T+2
+    currency: "HKD"
+    currency_symbol: "港元"
+
+  US:
+    market: "美股"
+    market_specific_factors: |
+      SEC监管动态、中概股退市/审计风险（HFCAA法案）、期权市场影响（Gamma Squeeze）、
+      做空报告风险（浑水/香橼等）、美联储利率政策影响、
+      ADR vs 正股价差、SPAC/DeSPAC风险
+    data_source: "yfinance"
+    language: "英文分析+中文总结"
+    trading_rules: |
+      - T+0交易制度（当日买卖无限制，但PDT规则限制：25K美元以下账户5个交易日内不超过3次日内交易）
+      - 无涨跌停限制（但有熔断机制：7%/13%/20%三级）
+      - 盘前交易：4:00-9:30 ET / 盘后交易：16:00-20:00 ET
+      - 最小交易单位：1股
+      - 融资保证金：Reg T 50%初始保证金
+    currency: "USD"
+    currency_symbol: "$"
+
+# 通用变量（所有市场共用）
+common:
+  date: "{当前日期，运行时注入}"
+  disclaimer: |
+    免责声明：以上分析仅供研究参考，不构成投资建议。
+    股市有风险，投资需谨慎。请投资者根据自身风险承受能力独立判断。

@@ -1,0 +1,78 @@
+# 预设场景模板（快捷组合）
+# 每个场景定义自动勾选的维度组合
+
+scenarios:
+  quick_scan:
+    name: "快速扫描"
+    description: "每日自选股技术面快筛，快速了解基本面+技术信号"
+    dimensions:
+      - COMPANY_BASICS
+      - TECHNICAL
+    recommended_tier: T1
+    typical_use: "早盘前快速过一遍自选股，判断当日是否有操作机会"
+    estimated_cost: "免费(T1)"
+    estimated_time: "~30秒/只"
+
+  value_discovery:
+    name: "价值挖掘"
+    description: "发现低估值好公司，全面评估内在价值"
+    dimensions:
+      - COMPANY_BASICS
+      - INDUSTRY
+      - BUSINESS_MODEL
+      - FINANCIAL_QUALITY
+      - VALUATION
+      - MOAT
+    recommended_tier: T2
+    typical_use: "研究新标的、寻找低估值机会、建仓前深度调研"
+    estimated_cost: "~¥0.10/只(T2)"
+    estimated_time: "~2分钟/只"
+
+  deep_research:
+    name: "深度研报"
+    description: "重仓标的全方位分析，覆盖所有9个维度"
+    dimensions:
+      - COMPANY_BASICS
+      - INDUSTRY
+      - BUSINESS_MODEL
+      - FINANCIAL_QUALITY
+      - VALUATION
+      - MOAT
+      - SUPPLY_CHAIN
+      - TECHNICAL
+      - DECISION
+    recommended_tier: T3
+    typical_use: "重仓标的决策、季报后全面复盘、投资组合核心持仓"
+    estimated_cost: "~¥0.14/只(T2) / ~¥0.50/只(T3)"
+    estimated_time: "~3分钟/只"
+
+  supply_chain_invest:
+    name: "产业链投资"
+    description: "顺藤摸瓜找产业链机会，发现关联标的"
+    dimensions:
+      - COMPANY_BASICS
+      - INDUSTRY
+      - SUPPLY_CHAIN
+    recommended_tier: T2
+    typical_use: "某行业爆发时快速找到上下游受益标的、跨市场配置"
+    estimated_cost: "~¥0.06/只(T2)"
+    estimated_time: "~1分钟/只"
+
+  timing:
+    name: "买卖时机"
+    description: "已研究过的标的，判断操作时点"
+    dimensions:
+      - VALUATION
+      - TECHNICAL
+      - DECISION
+    recommended_tier: T2
+    typical_use: "已持仓标的的加减仓决策、目标价附近的操作判断"
+    estimated_cost: "~¥0.08/只(T2)"
+    estimated_time: "~1分钟/只"
+
+# 自定义场景模板
+custom:
+  name: "自定义"
+  description: "用户自选维度组合"
+  dimensions: []  # 运行时由用户指定
+  recommended_tier: "auto"  # 按各维度推荐梯度自动选择
