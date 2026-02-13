@@ -23,6 +23,17 @@ class LLMClient:
 
     # 提供商配置: (env_key, base_url, default_model, 价格/百万token)
     PROVIDERS = {
+        "anthropic": {
+            "env_key": "ANTHROPIC_API_KEY",
+            "base_url": "https://api.anthropic.com",
+            "models": {
+                "T1": "claude-haiku-4-5-20251001",
+                "T2": "claude-sonnet-4-5-20250929",
+                "T3": "claude-sonnet-4-5-20250929",
+            },
+            "price_input": 21.6,   # 元/百万token (Sonnet $3/M → ~21.6元)
+            "price_output": 108.0,  # 元/百万token (Sonnet $15/M → ~108元)
+        },
         "deepseek": {
             "env_key": "DEEPSEEK_API_KEY",
             "base_url": "https://api.deepseek.com/v1",
@@ -64,6 +75,7 @@ class LLMClient:
         "openai_compatible": {
             "env_key": "OPENAI_API_KEY",
             "base_url_env": "OPENAI_BASE_URL",
+            "model_env": "OPENAI_MODEL",  # 从环境变量读模型名
             "models": {
                 "T1": "auto",
                 "T2": "auto",
@@ -76,9 +88,9 @@ class LLMClient:
 
     # 梯度 → 提供商优先级
     TIER_PRIORITY = {
-        "T1": ["baidu", "zhipu", "openai_compatible"],
-        "T2": ["deepseek", "alibaba", "openai_compatible"],
-        "T3": ["deepseek", "alibaba", "openai_compatible"],
+        "T1": ["baidu", "zhipu", "anthropic", "openai_compatible"],
+        "T2": ["deepseek", "alibaba", "anthropic", "openai_compatible"],
+        "T3": ["deepseek", "alibaba", "anthropic", "openai_compatible"],
     }
 
     def __init__(self, max_tier: str = "T3"):
@@ -136,11 +148,24 @@ class LLMClient:
         api_key = self._available[provider_name]
         model = cfg["models"].get(tier, list(cfg["models"].values())[0])
 
+        # 从环境变量覆盖模型名（支持 Ollama 等本地部署）
+        if "model_env" in cfg:
+            env_model = os.environ.get(cfg["model_env"], "")
+            if env_model:
+                model = env_model
+
         # 构建base_url
         if "base_url_env" in cfg:
             base_url = os.environ.get(cfg["base_url_env"], cfg.get("base_url", ""))
         else:
             base_url = cfg["base_url"]
+
+        # Anthropic (Claude) 使用自有API格式
+        if provider_name == "anthropic":
+            return self._call_anthropic(
+                api_key, model, system_prompt, user_prompt,
+                temperature, max_tokens, cfg
+            )
 
         # OpenAI兼容格式（DeepSeek/智谱/阿里/OpenAI均支持）
         if provider_name in ("deepseek", "zhipu", "alibaba", "openai_compatible"):
@@ -194,6 +219,53 @@ class LLMClient:
             content=choice["message"]["content"],
             model=model,
             provider=provider_name,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            cost_yuan=round(cost, 4),
+            elapsed_ms=elapsed,
+        )
+
+    def _call_anthropic(self, api_key, model, system_prompt, user_prompt,
+                        temperature, max_tokens, cfg) -> LLMResponse:
+        """Anthropic Claude API调用"""
+        url = f"{cfg['base_url']}/v1/messages"
+        headers = {
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "system": system_prompt,
+            "messages": [
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+        }
+
+        t0 = time.time()
+        resp = requests.post(url, headers=headers, json=payload, timeout=180)
+        elapsed = int((time.time() - t0) * 1000)
+
+        if resp.status_code != 200:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:500]}")
+
+        result = resp.json()
+        content = ""
+        for block in result.get("content", []):
+            if block.get("type") == "text":
+                content += block.get("text", "")
+
+        usage = result.get("usage", {})
+        in_tok = usage.get("input_tokens", 0)
+        out_tok = usage.get("output_tokens", 0)
+        cost = (in_tok * cfg["price_input"] + out_tok * cfg["price_output"]) / 1e6
+
+        return LLMResponse(
+            content=content,
+            model=model,
+            provider="anthropic",
             input_tokens=in_tok,
             output_tokens=out_tok,
             cost_yuan=round(cost, 4),

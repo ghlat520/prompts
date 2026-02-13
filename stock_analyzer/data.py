@@ -1,10 +1,9 @@
-"""数据获取 - akshare取数 + 技术指标计算"""
+"""数据获取 - baostock(K线) + akshare(财务) + 技术指标计算"""
 
+import os
 import akshare as ak
-import pandas as pd
+import baostock as bs
 import numpy as np
-import json
-import traceback
 from datetime import datetime, timedelta
 
 
@@ -44,21 +43,35 @@ def _fetch_a_share(code: str, data: dict):
         errors.append(f"company_info: {e}")
         data["stock_name"] = code
 
-    # 2. 日K线（最近250日）
+    # 2. 日K线（最近400日，baostock：独立TCP协议，不受HTTP代理影响）
     try:
-        start = (datetime.now() - timedelta(days=400)).strftime("%Y%m%d")
-        df = ak.stock_zh_a_hist(symbol=code, period="daily", start_date=start, adjust="qfq")
-        data["kline_raw"] = df
+        bs_prefix = "sz" if code.startswith("3") or code.startswith("0") else "sh"
+        bs_code = f"{bs_prefix}.{code}"
+        start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
+        end = datetime.now().strftime("%Y-%m-%d")
+
+        lg = bs.login()
+        rs = bs.query_history_k_data_plus(
+            bs_code,
+            "date,open,high,low,close,volume,amount,turn",
+            start_date=start, end_date=end,
+            frequency="d", adjustflag="2",  # 前复权
+        )
+        rows = []
+        while rs.next():
+            rows.append(rs.get_row_data())
+        bs.logout()
+
         data["kline"] = [{
-            "date": str(r.get("日期", "")),
-            "open": float(r.get("开盘", 0)),
-            "close": float(r.get("收盘", 0)),
-            "high": float(r.get("最高", 0)),
-            "low": float(r.get("最低", 0)),
-            "volume": float(r.get("成交量", 0)),
-            "amount": float(r.get("成交额", 0)),
-            "turnover": float(r.get("换手率", 0)),
-        } for _, r in df.iterrows()]
+            "date": r[0],
+            "open": float(r[1]) if r[1] else 0,
+            "close": float(r[4]) if r[4] else 0,
+            "high": float(r[2]) if r[2] else 0,
+            "low": float(r[3]) if r[3] else 0,
+            "volume": float(r[5]) if r[5] else 0,
+            "amount": float(r[6]) if r[6] else 0,
+            "turnover": float(r[7]) if r[7] else 0,
+        } for r in rows if r[4]]  # 跳过 close 为空的行
     except Exception as e:
         errors.append(f"kline: {e}")
 

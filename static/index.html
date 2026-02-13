@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>股票智能分析</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5/github-markdown-dark.min.css">
+<style>
+  :root { --bg: #0a0e17; --card: #111827; --border: #1e293b; --accent: #06b6d4; --text: #e2e8f0; --muted: #64748b; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Mono', 'Fira Code', monospace; }
+  .glass { background: rgba(17,24,39,0.8); backdrop-filter: blur(12px); border: 1px solid var(--border); }
+  .glow { box-shadow: 0 0 20px rgba(6,182,212,0.15); }
+  .pulse-dot { animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+  .dim-card { transition: all 0.3s; }
+  .dim-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .dim-card.active { border-color: var(--accent); box-shadow: 0 0 12px rgba(6,182,212,0.2); }
+  .markdown-body { background: transparent !important; color: var(--text) !important; font-size: 14px; }
+  .markdown-body h1,.markdown-body h2,.markdown-body h3 { color: #06b6d4 !important; border-color: var(--border) !important; }
+  .markdown-body table { display: table; width: 100%; }
+  .markdown-body th,.markdown-body td { border-color: var(--border) !important; }
+  .markdown-body code { background: rgba(6,182,212,0.1) !important; color: #22d3ee !important; }
+  .markdown-body pre { background: #0f172a !important; }
+  .progress-bar { transition: width 0.5s ease; }
+  .scenario-btn { transition: all 0.2s; }
+  .scenario-btn.selected { background: rgba(6,182,212,0.2); border-color: var(--accent); color: var(--accent); }
+  input:focus { outline: none; box-shadow: 0 0 0 2px rgba(6,182,212,0.3); }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .log-line { font-size: 12px; line-height: 1.6; }
+  .fade-in { animation: fadeIn 0.3s ease-in; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- Header -->
+<header class="glass sticky top-0 z-50 px-6 py-3 flex items-center gap-4">
+  <div class="flex items-center gap-2">
+    <span class="text-cyan-400 text-lg font-bold">⬡</span>
+    <span class="text-cyan-400 font-bold text-sm tracking-wider">STOCK ANALYZER</span>
+  </div>
+  <div class="flex-1"></div>
+  <div id="statusBadge" class="text-xs text-slate-500">就绪</div>
+</header>
+
+<!-- Main -->
+<main class="max-w-6xl mx-auto px-4 py-6">
+
+  <!-- 输入区 -->
+  <section class="glass rounded-xl p-6 mb-6 glow">
+    <div class="flex flex-col md:flex-row gap-4 items-start">
+      <!-- 股票代码 -->
+      <div class="flex-1 w-full">
+        <label class="text-xs text-slate-500 mb-1 block">股票代码 / 名称</label>
+        <input id="stockInput" type="text" placeholder="输入代码 如 300054、600519、AAPL"
+          class="w-full bg-slate-900/50 border border-slate-700 rounded-lg px-4 py-3 text-lg text-white placeholder-slate-600"
+          autocomplete="off" />
+      </div>
+      <!-- 场景选择 -->
+      <div class="flex-1 w-full">
+        <label class="text-xs text-slate-500 mb-1 block">分析场景</label>
+        <div id="scenarioList" class="flex flex-wrap gap-2">
+          <!-- 动态填充 -->
+        </div>
+      </div>
+      <!-- 分析按钮 -->
+      <div class="flex-shrink-0 pt-5">
+        <button id="analyzeBtn" onclick="startAnalysis()"
+          class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-8 py-3 rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+          开始分析
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 股票信息卡片 -->
+  <section id="stockInfo" class="hidden glass rounded-xl p-4 mb-6 fade-in">
+    <div class="flex items-center gap-6 flex-wrap">
+      <div>
+        <span id="infoName" class="text-xl font-bold text-white"></span>
+        <span id="infoCode" class="text-sm text-slate-500 ml-2"></span>
+      </div>
+      <div class="flex gap-6 text-sm">
+        <div><span class="text-slate-500">价格</span> <span id="infoPrice" class="text-white font-mono ml-1"></span></div>
+        <div><span class="text-slate-500">PE(TTM)</span> <span id="infoPE" class="text-white font-mono ml-1"></span></div>
+        <div><span class="text-slate-500">市值</span> <span id="infoMV" class="text-white font-mono ml-1"></span>亿</div>
+        <div><span class="text-slate-500">行业</span> <span id="infoIndustry" class="text-cyan-400 ml-1"></span></div>
+        <div><span class="text-slate-500">趋势</span> <span id="infoTrend" class="ml-1"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 进度条 -->
+  <section id="progressSection" class="hidden mb-6 fade-in">
+    <div class="glass rounded-xl p-4">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-sm text-slate-400"><span class="pulse-dot inline-block w-2 h-2 bg-cyan-400 rounded-full mr-2"></span>分析进行中</span>
+        <span id="progressText" class="text-xs text-slate-500">0%</span>
+      </div>
+      <div class="w-full bg-slate-800 rounded-full h-1.5">
+        <div id="progressBar" class="progress-bar bg-cyan-500 h-1.5 rounded-full" style="width:0%"></div>
+      </div>
+      <!-- 日志 -->
+      <div id="logArea" class="mt-3 max-h-32 overflow-y-auto text-slate-500 space-y-0.5"></div>
+    </div>
+  </section>
+
+  <!-- 维度标签 + 报告内容 -->
+  <section id="reportSection" class="hidden fade-in">
+    <!-- 维度 tabs -->
+    <div id="dimTabs" class="flex flex-wrap gap-2 mb-4"></div>
+    <!-- 报告内容 -->
+    <div id="reportContent" class="glass rounded-xl p-6 markdown-body"></div>
+    <!-- 统计 -->
+    <div id="statsBar" class="hidden mt-4 glass rounded-lg p-3 flex items-center gap-6 text-xs text-slate-500">
+      <span>总Token: <span id="statTokens" class="text-white"></span></span>
+      <span>总成本: <span id="statCost" class="text-cyan-400"></span></span>
+      <span>维度: <span id="statDims" class="text-white"></span></span>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── 状态 ──
+let selectedScenario = 'quick_scan';
+let dimensionResults = {};
+let activeDim = null;
+let analyzing = false;
+
+// ── 初始化 ──
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadScenarios();
+  document.getElementById('stockInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startAnalysis();
+  });
+});
+
+async function loadScenarios() {
+  try {
+    const resp = await fetch('/api/scenarios');
+    const data = await resp.json();
+    const container = document.getElementById('scenarioList');
+    container.innerHTML = '';
+    for (const [key, cfg] of Object.entries(data)) {
+      const btn = document.createElement('button');
+      btn.className = `scenario-btn border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:border-cyan-600 ${key === selectedScenario ? 'selected' : ''}`;
+      btn.dataset.scenario = key;
+      btn.innerHTML = `${cfg.name}<span class="text-slate-600 ml-1">${cfg.estimated_cost || ''}</span>`;
+      btn.title = cfg.description;
+      btn.onclick = () => selectScenario(key);
+      container.appendChild(btn);
+    }
+  } catch(e) {
+    console.error('加载场景失败', e);
+  }
+}
+
+function selectScenario(key) {
+  selectedScenario = key;
+  document.querySelectorAll('.scenario-btn').forEach(b => {
+    b.classList.toggle('selected', b.dataset.scenario === key);
+  });
+}
+
+// ── 开始分析 ──
+async function startAnalysis() {
+  const code = document.getElementById('stockInput').value.trim();
+  if (!code || analyzing) return;
+
+  analyzing = true;
+  dimensionResults = {};
+  activeDim = null;
+
+  // UI重置
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('stockInfo').classList.add('hidden');
+  document.getElementById('reportSection').classList.add('hidden');
+  document.getElementById('statsBar').classList.add('hidden');
+  document.getElementById('progressSection').classList.remove('hidden');
+  document.getElementById('progressBar').style.width = '0%';
+  document.getElementById('progressText').textContent = '0%';
+  document.getElementById('logArea').innerHTML = '';
+  document.getElementById('dimTabs').innerHTML = '';
+  document.getElementById('reportContent').innerHTML = '';
+  document.getElementById('statusBadge').textContent = '分析中...';
+  document.getElementById('statusBadge').className = 'text-xs text-cyan-400';
+
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ stock_code: code, scenario: selectedScenario, max_tier: 'T3' }),
+    });
+    const { task_id } = await resp.json();
+    listenProgress(task_id);
+  } catch(e) {
+    addLog(`[ERROR] ${e.message}`, 'text-red-400');
+    resetUI();
+  }
+}
+
+function listenProgress(taskId) {
+  const evtSource = new EventSource(`/api/progress/${taskId}`);
+  evtSource.onmessage = (e) => {
+    const msg = JSON.parse(e.data);
+    handleMessage(msg);
+    if (msg.type === 'completed' || msg.type === 'error') {
+      evtSource.close();
+    }
+  };
+  evtSource.onerror = () => {
+    evtSource.close();
+    resetUI();
+  };
+}
+
+function handleMessage(msg) {
+  switch(msg.type) {
+    case 'info':
+      addLog(msg.message, 'text-slate-400');
+      break;
+    case 'warning':
+      addLog(`⚠ ${msg.message}`, 'text-yellow-500');
+      break;
+    case 'progress':
+      addLog(msg.message, 'text-cyan-600');
+      break;
+    case 'data_ready':
+      showStockInfo(msg);
+      addLog(`${msg.stock_name} | ¥${msg.price} | PE ${msg.pe} | ${msg.trend}`, 'text-green-400');
+      break;
+    case 'dimension_start':
+      updateProgress(msg.index, msg.total);
+      addLog(msg.message, 'text-cyan-400');
+      addDimTab(msg.dimension, 'loading');
+      break;
+    case 'dimension_done':
+      dimensionResults[msg.dimension] = msg;
+      updateDimTab(msg.dimension, 'done');
+      addLog(`✓ ${msg.dimension} (${msg.model}, ${msg.tokens}tok, ¥${msg.cost}, ${msg.elapsed_ms}ms)`, 'text-green-400');
+      // 自动展示第一个完成的维度，或刷新当前正在查看的维度
+      if (!activeDim || activeDim === msg.dimension) showDimension(msg.dimension);
+      updateProgress(msg.index, msg.total);
+      break;
+    case 'dimension_error':
+      updateDimTab(msg.dimension, 'error');
+      addLog(`✗ ${msg.dimension}: ${msg.error}`, 'text-red-400');
+      break;
+    case 'completed':
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressText').textContent = '100%';
+      addLog(`\n分析完成 | ${msg.dimensions.length}维度 | ${msg.total_tokens}tok | ¥${msg.total_cost}`, 'text-cyan-400 font-bold');
+      document.getElementById('reportSection').classList.remove('hidden');
+      document.getElementById('statsBar').classList.remove('hidden');
+      document.getElementById('statTokens').textContent = msg.total_tokens;
+      document.getElementById('statCost').textContent = `¥${msg.total_cost}`;
+      document.getElementById('statDims').textContent = msg.dimensions.join(', ');
+      resetUI();
+      break;
+    case 'error':
+      addLog(`[ERROR] ${msg.message}`, 'text-red-400');
+      resetUI();
+      break;
+  }
+}
+
+function updateProgress(index, total) {
+  const pct = Math.round((index / total) * 90); // 留10%给完成
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressText').textContent = pct + '%';
+}
+
+function showStockInfo(data) {
+  document.getElementById('stockInfo').classList.remove('hidden');
+  document.getElementById('infoName').textContent = data.stock_name;
+  document.getElementById('infoCode').textContent = data.stock_code || '';
+  document.getElementById('infoPrice').textContent = data.price;
+  document.getElementById('infoPE').textContent = data.pe;
+  document.getElementById('infoMV').textContent = data.market_cap;
+  document.getElementById('infoIndustry').textContent = data.industry;
+  const trendEl = document.getElementById('infoTrend');
+  trendEl.textContent = data.trend;
+  trendEl.className = data.trend === '多头排列' ? 'ml-1 text-green-400' :
+                       data.trend === '空头排列' ? 'ml-1 text-red-400' : 'ml-1 text-yellow-400';
+}
+
+// ── 维度标签 ──
+const DIM_NAMES = {
+  COMPANY_BASICS: '公司基础', INDUSTRY: '行业分析', BUSINESS_MODEL: '商业模式',
+  FINANCIAL_QUALITY: '财务质量', VALUATION: '估值分析', MOAT: '护城河',
+  SUPPLY_CHAIN: '产业链', TECHNICAL: '技术面', DECISION: '综合决策',
+};
+
+function addDimTab(dim, status) {
+  document.getElementById('reportSection').classList.remove('hidden');
+  const tabs = document.getElementById('dimTabs');
+  // 已存在则跳过
+  if (document.getElementById(`tab-${dim}`)) return;
+
+  const btn = document.createElement('button');
+  btn.id = `tab-${dim}`;
+  btn.className = 'dim-card border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-500';
+  btn.innerHTML = status === 'loading'
+    ? `<span class="pulse-dot inline-block w-1.5 h-1.5 bg-cyan-400 rounded-full mr-1"></span>${DIM_NAMES[dim] || dim}`
+    : DIM_NAMES[dim] || dim;
+  btn.onclick = () => showDimension(dim);
+  tabs.appendChild(btn);
+}
+
+function updateDimTab(dim, status) {
+  const tab = document.getElementById(`tab-${dim}`);
+  if (!tab) return;
+  tab.innerHTML = DIM_NAMES[dim] || dim;
+  if (status === 'done') {
+    tab.className = 'dim-card border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-green-400 cursor-pointer hover:border-cyan-500';
+  } else if (status === 'error') {
+    tab.className = 'dim-card border border-red-800 rounded-lg px-3 py-1.5 text-xs text-red-400';
+  }
+}
+
+function showDimension(dim) {
+  activeDim = dim;
+  // 高亮 tab
+  document.querySelectorAll('.dim-card').forEach(t => t.classList.remove('active'));
+  const tab = document.getElementById(`tab-${dim}`);
+  if (tab) tab.classList.add('active');
+
+  const data = dimensionResults[dim];
+  const container = document.getElementById('reportContent');
+  if (!data) {
+    container.innerHTML = '<p class="text-slate-500">分析中...</p>';
+    return;
+  }
+  container.innerHTML = marked.parse(data.content || '');
+}
+
+// ── 日志 ──
+function addLog(text, cls = '') {
+  const area = document.getElementById('logArea');
+  const line = document.createElement('div');
+  line.className = `log-line ${cls}`;
+  line.textContent = text;
+  area.appendChild(line);
+  area.scrollTop = area.scrollHeight;
+}
+
+function resetUI() {
+  analyzing = false;
+  document.getElementById('analyzeBtn').disabled = false;
+  document.getElementById('statusBadge').textContent = '就绪';
+  document.getElementById('statusBadge').className = 'text-xs text-slate-500';
+}
+</script>
+</body>
+</html>

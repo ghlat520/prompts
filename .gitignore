@@ -1,2 +1,5 @@
 .DS_Store
 test-results/
+output/
+.env
+__pycache__/
